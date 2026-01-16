@@ -1,0 +1,8 @@
+[package]
+name = "ipa-fun"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+pasta_curves = "0.5.1"
+rand = "0.8"
