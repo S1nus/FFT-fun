@@ -17,11 +17,15 @@ fn main() {
 
     let polynomial: Vec<u64> = vec![3,1,4,1,5,9,2,6];
 
-    let result = evaluate_polynomial_naive(polynomial.clone(), domain.clone(), modulus);
-    let result_fft = evaluate_polynomial_fft(polynomial.clone(), domain.clone(), modulus);
+    let result = evaluate_polynomial_naive(&polynomial, &domain, modulus);
+    let result_one_split = evaluate_polynomial_with_one_split(&polynomial, &domain, modulus);
+    let result_fft = evaluate_polynomial_fft(&polynomial, &domain, modulus);
+    println!("result: {:?}", result);
+    println!("result_one_split: {:?}", result_one_split);
+    println!("result_fft: {:?}", result_fft);
 }
 
-fn evaluate_polynomial_naive(polynomial: Vec<u64>, domain: Vec<u64>, modulus: u64) -> Vec<u64> {
+fn evaluate_polynomial_naive(polynomial: &Vec<u64>, domain: &Vec<u64>, modulus: u64) -> Vec<u64> {
     println!("Evaluating polynomial of size {} (naive) at {} points", polynomial.len(), domain.len());
 
     let mut num_mod_exps = 0;
@@ -32,30 +36,80 @@ fn evaluate_polynomial_naive(polynomial: Vec<u64>, domain: Vec<u64>, modulus: u6
     for x in domain {
         let mut value: u64 = 0;
         for (i, coeff) in polynomial.iter().enumerate() {
-            value = (value + coeff * mod_exp(x, i as u64, modulus)) % modulus;
+            value = (value + coeff * mod_exp(*x, i as u64, modulus)) % modulus;
             num_mod_exps += 1;
             num_muls += 1;
             num_adds += 1;
         }
+        result.push(value);
     }
     println!("exps: {}, adds: {}, muls: {}", num_mod_exps, num_adds, num_muls);
     result
 }
 
-fn evaluate_polynomial_fft(polynomial: Vec<u64>, domain: Vec<u64>, modulus: u64) -> Vec<u64> {
+fn evaluate_polynomial_with_one_split(polynomial: &Vec<u64>, domain: &Vec<u64>, modulus: u64) -> Vec<u64> {
     println!("Evaluating polynomial of size {} (fft) at {} points", polynomial.len(), domain.len());
 
     let mut num_mod_exps = 0;
     let mut num_adds = 0;
     let mut num_muls = 0;
 
+    let mut evens = polynomial.iter().step_by(2).map(|x| *x).collect::<Vec<u64>>();
+    let mut odds = polynomial.iter().skip(1).step_by(2).map(|x| *x).collect::<Vec<u64>>();
+
+    let halved_domain = domain[0..domain.len()/2].iter().map(|x| mod_exp(*x, 2, modulus)).collect::<Vec<u64>>();
+    println!("halved_domain: {:?}", halved_domain);
+    let evens_result = evaluate_polynomial_naive(&evens, &halved_domain, modulus);
+    let odds_result = evaluate_polynomial_naive(&odds, &halved_domain, modulus);
+    let p_x_results: Vec<u64> = evens_result
+        .iter()
+        .zip(odds_result.iter())
+        .zip(domain.iter())
+        .map(|((e, o), x)| 
+            (e + (x * o)%modulus) % modulus)
+        .collect();
+
+    let p_neg_x_results: Vec<u64> = evens_result
+        .iter()
+        .zip(odds_result.iter())
+        .zip(domain.iter())
+        .map(|((e, o), x)| 
+            (e + modulus - (x * o) % modulus) % modulus)
+        .collect();
+
+    p_x_results.iter().chain(p_neg_x_results.iter()).map(|x| *x).collect()
+}
+
+fn evaluate_polynomial_fft(polynomial: &Vec<u64>, domain: &Vec<u64>, modulus: u64) -> Vec<u64> {
+
+    let mut num_mod_exps = 0;
+    let mut num_adds = 0;
+    let mut num_muls = 0;
+
     if polynomial.len() == 1 {
+        return vec![polynomial[0]];
     }
 
     let mut evens = polynomial.iter().step_by(2).map(|x| *x).collect::<Vec<u64>>();
     let mut odds = polynomial.iter().skip(1).step_by(2).map(|x| *x).collect::<Vec<u64>>();
-
-    let halved_domain;
+    let halved_domain = domain[0..domain.len()/2].iter().map(|x| mod_exp(*x, 2, modulus)).collect::<Vec<u64>>();
+    let evens_result = evaluate_polynomial_fft(&evens, &halved_domain, modulus);
+    let odds_result = evaluate_polynomial_fft(&odds, &halved_domain, modulus);
+    let p_x_results: Vec<u64> = evens_result
+        .iter()
+        .zip(odds_result.iter())
+        .zip(domain.iter())
+        .map(|((e, o), x)| 
+            (e + (x * o)%modulus) % modulus)
+        .collect();
+    let p_neg_x_results: Vec<u64> = evens_result
+        .iter()
+        .zip(odds_result.iter())
+        .zip(domain.iter())
+        .map(|((e, o), x)| 
+            (e + modulus - (x * o) % modulus) % modulus)
+        .collect();
+    p_x_results.iter().chain(p_neg_x_results.iter()).map(|x| *x).collect()
 }
 
 fn mod_exp(mut base: u64, mut exp: u64, modulus: u64) -> u64 {
