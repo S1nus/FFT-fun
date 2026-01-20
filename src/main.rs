@@ -23,6 +23,10 @@ fn main() {
     println!("result: {:?}", result);
     println!("result_one_split: {:?}", result_one_split);
     println!("result_fft: {:?}", result_fft);
+
+    let ifft_result = ifft(&result_fft, &domain, modulus);
+    println!("Expected result: {:?}", polynomial);
+    println!("ifft_result: {:?}", ifft_result);
 }
 
 fn evaluate_polynomial_naive(polynomial: &Vec<u64>, domain: &Vec<u64>, modulus: u64) -> Vec<u64> {
@@ -110,6 +114,15 @@ fn evaluate_polynomial_fft(polynomial: &Vec<u64>, domain: &Vec<u64>, modulus: u6
             (e + modulus - (x * o) % modulus) % modulus)
         .collect();
     p_x_results.iter().chain(p_neg_x_results.iter()).map(|x| *x).collect()
+}
+
+fn ifft(values: &Vec<u64>, domain: &Vec<u64>,modulus: u64) -> Vec<u64> {
+    let mut fft_result = evaluate_polynomial_fft(&values, &domain, modulus);
+    fft_result[1..].reverse();
+    for i in 0..fft_result.len() {
+        fft_result[i] = fft_result[i] * mod_exp(domain.len() as u64, modulus - 2, modulus) % modulus;
+    }
+    fft_result
 }
 
 fn mod_exp(mut base: u64, mut exp: u64, modulus: u64) -> u64 {
