@@ -16,6 +16,7 @@ pub struct Bootle16PCS {
 pub struct CommitmentKey {
     coefficients: Vec<Scalar>, // padded to n^2
     blinds: Vec<Scalar>,       // length n
+    column_blinds: Vec<Scalar>, // length n - 1
     n: usize,
 }
 
@@ -61,6 +62,7 @@ impl Pcs for Bootle16PCS {
         
         // Generate blinding factors for each row
         let blinds: Vec<Scalar> = (0..n).map(|_| Scalar::random(&mut rng)).collect();
+        let column_blinds: Vec<Scalar> = (0..n - 1).map(|_| Scalar::random(&mut rng)).collect();
         
         // Commit to each row: T_i = g_1^{t_{i,0}} * g_2^{t_{i,1}} * ... * g_n^{t_{i,n-1}} * h^{τ_i}
         let mut row_commitments = Vec::with_capacity(n);
@@ -75,7 +77,7 @@ impl Pcs for Bootle16PCS {
         
         (
             Commitment { row_commitments },
-            CommitmentKey { coefficients: coeffs, blinds, n }
+            CommitmentKey { coefficients: coeffs, blinds, column_blinds, n }
         )
     }
 
@@ -112,9 +114,6 @@ impl Pcs for Bootle16PCS {
 
     fn verify_open(&self, commitment: &Commitment, opening: &Opening) -> bool {
         let n = commitment.row_commitments.len();
-        
-        // Compute x^n
-        let x_to_n = opening.x.pow([n as u64]);
         
         // Precompute powers of x^n
         let mut x_n_powers = vec![Scalar::ONE; n];
