@@ -10,8 +10,8 @@ use core::ops::Mul;
 mod pedersen_pcs;
 use pedersen_pcs::PedersenPolynomialCommitmentScheme;
 
-mod bootle16_pcs;
-use bootle16_pcs::Bootle16PCS;
+mod bootle16_standard_pcs;
+use bootle16_standard_pcs::Bootle16StandardPCS;
 
 fn main() {
 }

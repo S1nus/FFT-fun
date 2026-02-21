@@ -8,7 +8,7 @@ use rand::rngs::OsRng;
 use super::Pcs;
 use std::iter;
 
-pub struct Bootle16PCS {
+pub struct Bootle16StandardPCS {
     // there will be n points in g_s
     g_s: Vec<Point>,
     // h is one point for the row blind
@@ -37,11 +37,12 @@ pub struct Commitment {
 
 pub struct Opening {
     x: Scalar,
+    y: Scalar,
     t_bar: Vec<Scalar>,  // length n
     tau_bar: Scalar,     // combined blinding factor
 }
 
-impl Pcs for Bootle16PCS {
+impl Pcs for Bootle16StandardPCS {
     type Commitment = Commitment;
     type CommitmentKey = CommitmentKey;
     type Opening = Opening;
@@ -115,6 +116,13 @@ impl Pcs for Bootle16PCS {
     }
 
     fn open(&self, commitment_key: &CommitmentKey, x: Scalar) -> Opening {
+        let mut evaluation = Scalar::zero();
+        let mut current_x = Scalar::one();
+        for coeff in &commitment_key.coefficients {
+            evaluation += coeff * current_x;
+            current_x *= x;
+        }
+
         let n = commitment_key.n;
         
         // Compute x^n (we'll need powers x^0, x^n, x^{2n}, ..., x^{(n-1)n})
@@ -153,7 +161,7 @@ impl Pcs for Bootle16PCS {
         // for now, i will not add it to tau_bar because it doesn't exist. it implicitly == zero.
         // tau_bar += commitment_key.column_blinds_commitment;
         
-        Opening { x, t_bar, tau_bar }
+        Opening { x, y: evaluation, t_bar, tau_bar }
     }
 
     fn verify_open(&self, commitment: &Commitment, opening: &Opening) -> bool {
@@ -181,7 +189,21 @@ impl Pcs for Bootle16PCS {
         expected_commitment += self.h * opening.tau_bar;
         
         // Check: Π T_i^{x^{in}} == Com(t̄; τ̄)
-        combined_commitment == expected_commitment
+        if combined_commitment != expected_commitment {
+            return false;
+        }
+
+        let mut eval = Scalar::zero();
+        let mut current_x = Scalar::one();
+        for t in &opening.t_bar {
+            eval += t * current_x;
+            current_x *= opening.x;
+        }
+        if eval != opening.y {
+            return false;
+        }
+
+        true
     }
 }
 
@@ -191,7 +213,7 @@ mod tests {
 
     #[test]
     fn test_commit_open_verify() {
-        let pcs = Bootle16PCS::setup(10);
+        let pcs = Bootle16StandardPCS::setup(10);
         let coefficients: Vec<Scalar> = (0..10).map(|i| Scalar::from(i)).collect();
         let (commitment, commitment_key) = pcs.commit(&coefficients);
         let opening = pcs.open(&commitment_key, Scalar::from(5));
