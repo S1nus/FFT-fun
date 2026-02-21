@@ -86,8 +86,10 @@ impl Pcs for Bootle16PCS {
         let mut first_row_commitment = Point::identity();
         first_row_commitment +=  self.g_s[0] * coeffs[0];
         for i in 1..n {
-            first_row_commitment += self.g_s[i] * (coeffs[i] - column_blinds[i]);
+            first_row_commitment += self.g_s[i] * (coeffs[i] - column_blinds[i-1]);
         }
+        first_row_commitment += self.h * blinds[0];
+        row_commitments.push(first_row_commitment);
 
         // Commit to the rest of the rows, normally
         for i in 1..n {
@@ -132,7 +134,7 @@ impl Pcs for Bootle16PCS {
                 // t_{i,j} is at index i*n + j
                 t_bar[j] += commitment_key.coefficients[i * n + j] * x_n_powers[i];
             }
-            t_bar[j] += commitment_key.column_blinds[j];
+            t_bar[j] += commitment_key.column_blinds[j] * x;
         }
         
         // Compute τ̄ = Σ_{i=0}^{n-1} τ_i * x^{in}
@@ -163,7 +165,7 @@ impl Pcs for Bootle16PCS {
         for i in 0..n {
             combined_commitment += commitment.row_commitments[i] * x_n_powers[i];
         }
-        combined_commitment += commitment.column_blinds_commitment * x_n_powers[1];
+        combined_commitment += commitment.column_blinds_commitment * opening.x;
         
         // Compute commitment to t̄ with blinding τ̄
         // Com(t̄; τ̄) = g_1^{t̄_0} * g_2^{t̄_1} * ... * g_n^{t̄_{n-1}} * h^{τ̄}
