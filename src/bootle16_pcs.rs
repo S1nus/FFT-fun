@@ -136,6 +136,11 @@ impl Pcs for Bootle16PCS {
             }
             t_bar[j] += commitment_key.column_blinds[j] * x;
         }
+
+        // Subtract column binds from first row coeffs, same as during commit
+        for j in 1..n {
+            t_bar[j] -= commitment_key.column_blinds[j-1];
+        }
         
         // Compute τ̄ = Σ_{i=0}^{n-1} τ_i * x^{in}
         let mut tau_bar = Scalar::ZERO;
