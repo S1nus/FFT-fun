@@ -6,22 +6,33 @@ use pasta_curves::{
 };
 use rand::rngs::OsRng;
 use super::Pcs;
+use std::iter;
 
 pub struct Bootle16PCS {
+    // there will be n points in g_s
     g_s: Vec<Point>,
+    // h is one point for the row blind
     h: Point,
-    n: usize, // side length of square
+    // side length of square
+    n: usize,
 }
 
 pub struct CommitmentKey {
-    coefficients: Vec<Scalar>, // padded to n^2
-    blinds: Vec<Scalar>,       // length n
-    column_blinds: Vec<Scalar>, // length n - 1
+    // coeffs, padded to n^2
+    coefficients: Vec<Scalar>,
+    // length n, one for each row
+    row_blinds: Vec<Scalar>,
+    // length n, the first column in the first row is offset by one, the last column in the last row has zero as its column blind
+    // column_blinds[n-1] = zero
+    column_blinds: Vec<Scalar>, 
     n: usize,
 }
 
 pub struct Commitment {
-    row_commitments: Vec<Point>, // length n
+    // length n
+    row_commitments: Vec<Point>, 
+    // commitment to the special row ("U"), for the column blinds
+    column_blinds_commitment: Point 
 }
 
 pub struct Opening {
@@ -62,11 +73,24 @@ impl Pcs for Bootle16PCS {
         
         // Generate blinding factors for each row
         let blinds: Vec<Scalar> = (0..n).map(|_| Scalar::random(&mut rng)).collect();
-        let column_blinds: Vec<Scalar> = (0..n - 1).map(|_| Scalar::random(&mut rng)).collect();
+        // Generate column blinds
+        let column_blinds: Vec<Scalar> = (0..n - 1)
+            .map(|_| Scalar::random(&mut rng))
+            .chain(iter::once(Scalar::zero()))
+            .collect();
         
         // Commit to each row: T_i = g_1^{t_{i,0}} * g_2^{t_{i,1}} * ... * g_n^{t_{i,n-1}} * h^{τ_i}
         let mut row_commitments = Vec::with_capacity(n);
-        for i in 0..n {
+
+        // Commit to the first row, which requires us to subtract the column blinds from the highest n-1 columns
+        let mut first_row_commitment = Point::identity();
+        first_row_commitment +=  self.g_s[0] * coeffs[0];
+        for i in 1..n {
+            first_row_commitment += self.g_s[i] * (coeffs[i] - column_blinds[i]);
+        }
+
+        // Commit to the rest of the rows, normally
+        for i in 1..n {
             let mut row_commitment = Point::identity();
             for j in 0..n {
                 row_commitment += self.g_s[j] * coeffs[i * n + j];
@@ -74,10 +98,17 @@ impl Pcs for Bootle16PCS {
             row_commitment += self.h * blinds[i];
             row_commitments.push(row_commitment);
         }
+
+        // Commit to the column blinds
+        let mut column_blinds_commitment = Point::identity();
+        for i in 0..n-1 {
+            column_blinds_commitment += self.g_s[i] * column_blinds[i];
+        }
+        column_blinds_commitment += self.g_s[n-1] * Scalar::zero();
         
         (
-            Commitment { row_commitments },
-            CommitmentKey { coefficients: coeffs, blinds, column_blinds, n }
+            Commitment { row_commitments, column_blinds_commitment},
+            CommitmentKey { coefficients: coeffs, row_blinds: blinds, column_blinds, n}
         )
     }
 
@@ -101,13 +132,19 @@ impl Pcs for Bootle16PCS {
                 // t_{i,j} is at index i*n + j
                 t_bar[j] += commitment_key.coefficients[i * n + j] * x_n_powers[i];
             }
+            t_bar[j] += commitment_key.column_blinds[j];
         }
         
         // Compute τ̄ = Σ_{i=0}^{n-1} τ_i * x^{in}
         let mut tau_bar = Scalar::ZERO;
         for i in 0..n {
-            tau_bar += commitment_key.blinds[i] * x_n_powers[i];
+            tau_bar += commitment_key.row_blinds[i] * x_n_powers[i];
         }
+
+        // Hmm, I don't currently store a blind for the commitment to the column blinds
+        // maybe i can leave it empty, and thus "zero", because they are random values themselves
+        // for now, i will not add it to tau_bar because it doesn't exist. it implicitly == zero.
+        // tau_bar += commitment_key.column_blinds_commitment;
         
         Opening { x, t_bar, tau_bar }
     }
@@ -126,6 +163,7 @@ impl Pcs for Bootle16PCS {
         for i in 0..n {
             combined_commitment += commitment.row_commitments[i] * x_n_powers[i];
         }
+        combined_commitment += commitment.column_blinds_commitment * x_n_powers[1];
         
         // Compute commitment to t̄ with blinding τ̄
         // Com(t̄; τ̄) = g_1^{t̄_0} * g_2^{t̄_1} * ... * g_n^{t̄_{n-1}} * h^{τ̄}
