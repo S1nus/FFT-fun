@@ -13,6 +13,8 @@ use pedersen_pcs::PedersenPolynomialCommitmentScheme;
 mod bootle16_standard_pcs;
 use bootle16_standard_pcs::Bootle16StandardPCS;
 
+mod bootle16_laurent_pcs;
+
 fn main() {
 }
 
