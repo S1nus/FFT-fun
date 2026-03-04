@@ -25,7 +25,11 @@ pub struct CommitmentKey {
     negative_coefficients: Vec<Scalar>,
 }
 
-pub struct Commitment {}
+pub struct Commitment {
+    positive_row_commitments: Vec<Point>,
+    negative_row_commitments: Vec<Point>,
+    column_blinds_commitment: Point,
+}
 
 pub struct Opening {}
 
@@ -53,6 +57,10 @@ impl Pcs for Bootle16LaurentPCS {
 
     fn commit(&self, coefficients: &[Scalar]) -> (Commitment, CommitmentKey) {
 
+        let mut rng = OsRng::default();
+
+        let n = self.n;
+
         if coefficients.len() % 2 != 0 { panic!("Must have even num coeffs");}
 
         let negative_coefficients: Vec<Scalar> = coefficients
@@ -71,7 +79,54 @@ impl Pcs for Bootle16LaurentPCS {
             panic!("must equal n squared")
         }
 
-        (Commitment{}, CommitmentKey{positive_coefficients, negative_coefficients})
+        // Generate blinding factors for each row
+        let negative_blinds: Vec<Scalar> = (0..n).map(|_| Scalar::random(&mut rng)).collect();
+        let positive_blinds: Vec<Scalar> = (0..n).map(|_| Scalar::random(&mut rng)).collect();
+        // Generate column blinds
+        let column_blinds: Vec<Scalar> = (0..n - 1)
+            .map(|_| Scalar::random(&mut rng))
+            .chain(iter::once(Scalar::zero()))
+            .collect();
+
+        let mut positive_row_commitments: Vec<Ep> = Vec::with_capacity(n);
+        let mut negative_row_commitments: Vec<Ep> = Vec::with_capacity(n);
+
+        // commit to the negative rows
+        // normally, since the column blinds are just for the positives
+        for i in 0..n {
+            let mut row_commitment = Point::identity();
+            for j in 0..n {
+                row_commitment += self.g_s[j] * negative_coefficients[i*n + j];
+            }
+            row_commitment += self.h * negative_blinds[i];
+            negative_row_commitments.push(row_commitment);
+        }
+
+        // commit to the first positive row
+        // this requires subtracting the column blinds
+        let mut first_positive_row_commitment = Point::identity();
+        first_positive_row_commitment += self.g_s[0] * positive_coefficients[0];
+        for i in 1..n {
+            first_positive_row_commitment += self.g_s[i] * (positive_coefficients[i] - column_blinds[i-1]);
+        }
+        // commit to the rest of the positive rows
+        for i in 1..n {
+            let mut row_commitment = Point::identity();
+            for j in 0..n {
+                row_commitment += self.g_s[j] * positive_coefficients[i*n + j];
+            }
+            row_commitment += self.h * positive_blinds[i];
+            positive_row_commitments.push(row_commitment);
+        }
+        
+        // Commit to the column blinds
+        let mut column_blinds_commitment = Point::identity();
+        for i in 0..n-1 {
+            column_blinds_commitment += self.g_s[i] * column_blinds[i];
+        }
+        column_blinds_commitment += self.g_s[n-1] * Scalar::zero();
+
+        (Commitment{positive_row_commitments, negative_row_commitments, column_blinds_commitment}, CommitmentKey{positive_coefficients, negative_coefficients})
     }
 
     fn open(&self, commitment_key: &CommitmentKey, x: Scalar) -> Opening {
