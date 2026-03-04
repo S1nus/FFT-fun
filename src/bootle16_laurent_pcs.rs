@@ -23,6 +23,10 @@ pub struct Bootle16LaurentPCS {
 pub struct CommitmentKey {
     positive_coefficients: Vec<Scalar>,
     negative_coefficients: Vec<Scalar>,
+    positive_blinds: Vec<Scalar>,
+    negative_blinds: Vec<Scalar>,
+    column_blinds: Vec<Scalar>,
+    n: usize,
 }
 
 pub struct Commitment {
@@ -126,7 +130,7 @@ impl Pcs for Bootle16LaurentPCS {
         }
         column_blinds_commitment += self.g_s[n-1] * Scalar::zero();
 
-        (Commitment{positive_row_commitments, negative_row_commitments, column_blinds_commitment}, CommitmentKey{positive_coefficients, negative_coefficients})
+        (Commitment{positive_row_commitments, negative_row_commitments, column_blinds_commitment}, CommitmentKey{positive_coefficients, negative_coefficients, positive_blinds, negative_blinds, column_blinds, n})
     }
 
     fn open(&self, commitment_key: &CommitmentKey, x: Scalar) -> Opening {
